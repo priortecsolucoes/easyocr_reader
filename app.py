@@ -3,7 +3,7 @@ from flask import Flask, jsonify
 
 app = Flask(__name__)
 
-IMAGE_PATH = 'aso_image.jpg'
+IMAGE_PATH = 'aso_image.png'
 
 print("Start initializing OCR reader")
 reader = easyocr.Reader(['pt'])
