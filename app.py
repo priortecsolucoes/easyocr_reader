@@ -3,26 +3,28 @@ from flask import Flask, jsonify
 
 app = Flask(__name__)
 
-# Caminho fixo da imagem do ASO
 IMAGE_PATH = 'aso_image.jpg'
 
-reader = easyocr.Reader(['pt'])  # Português
-
+print("Start initializing OCR reader")
+reader = easyocr.Reader(['pt'])
+print("Finished initializing OCR reader")
 
 @app.route('/')
 def read_aso():
-    try:
-        result = reader.readtext(IMAGE_PATH, detail=0)
-        return jsonify({
-            'status': 'success',
-            'data': result
-        })
-    except Exception as e:
-        return jsonify({
-            'status': 'error',
-            'message': str(e)
-        })
+    print("Start reading image")
+    result = reader.readtext(IMAGE_PATH, detail=0)
+    print("Finished reading image")
+
+    print("Start creating response JSON")
+    response = jsonify({
+        'status': 'success',
+        'data': result
+    })
+    print("Finished creating response JSON")
+
+    return response
 
 
 if __name__ == '__main__':
+    print("Starting Flask server")
     app.run(host='0.0.0.0', port=5000)
