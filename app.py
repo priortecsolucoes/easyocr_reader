@@ -20,7 +20,7 @@ def read_aso():
         'status': 'success',
         'data': result
     })
-    print("Result: " + result)
+    print("Result: " + response)
     print("Finished creating response JSON")
 
     return response
