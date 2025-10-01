@@ -1,5 +1,6 @@
 import easyocr
 from flask import Flask, jsonify
+from PIL import Image
 
 app = Flask(__name__)
 
@@ -12,7 +13,12 @@ print("Finished initializing OCR reader")
 @app.route('/')
 def read_aso():
     print("Start reading image")
-    result = reader.readtext(IMAGE_PATH, detail=0)
+    # Abre a imagem com PIL
+    image_pil = Image.open(IMAGE_PATH)
+    if image_pil.mode != 'RGB':
+        image_pil = image_pil.convert('RGB')
+
+    result = reader.readtext(image_pil, detail=0)
     print("Finished reading image")
 
     print("Start creating response JSON")
