@@ -1,6 +1,7 @@
 import easyocr
 from flask import Flask, jsonify
 from PIL import Image
+import numpy as np
 
 app = Flask(__name__)
 
@@ -18,7 +19,10 @@ def read_aso():
     if image_pil.mode != 'RGB':
         image_pil = image_pil.convert('RGB')
 
-    result = reader.readtext(image_pil, detail=0)
+    # Converte para numpy array
+    image_np = np.array(image_pil)
+
+    result = reader.readtext(image_np, detail=0)
     print("Finished reading image")
 
     print("Start creating response JSON")
