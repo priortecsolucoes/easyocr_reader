@@ -11,7 +11,7 @@ reader = easyocr.Reader(['pt'])
 
 @app.post("/upload-png/")
 async def upload_png(file: UploadFile = File(...)):
-    if file.content_type not in ["image/png", "image/jpeg"]:
+    if not file.content_type.startswith("image/"):
         return JSONResponse({"error": "Arquivo precisa ser PNG ou JPEG"}, status_code=400)
     
     # Lê a imagem em memória
