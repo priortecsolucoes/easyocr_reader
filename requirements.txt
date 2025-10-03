@@ -1,7 +1,6 @@
 fastapi
 uvicorn[standard]
 easyocr
-pdf2image
 Pillow
 numpy
 torch
