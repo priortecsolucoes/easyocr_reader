@@ -8,7 +8,7 @@ import easyocr
 app = FastAPI()
 
 # Inicializa OCR reader apenas uma vez
-reader = easyocr.Reader(['pt'])
+reader = easyocr.Reader(['pt'], recog_network='tiny', gpu=False)
 
 @app.post("/upload-png/")
 async def upload_png(file: UploadFile = File(...)):
