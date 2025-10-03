@@ -1,41 +1,31 @@
+from fastapi import FastAPI, File, UploadFile
+from fastapi.responses import JSONResponse
+from pdf2image import convert_from_bytes
 import easyocr
-from flask import Flask, jsonify
-from PIL import Image
 import numpy as np
 
-app = Flask(__name__)
+app = FastAPI()
 
-IMAGE_PATH = 'SARAH JORDANIA DA FONSECA_001533_1_page_1 (1).png'
-
-print("Start initializing OCR reader")
+# Inicializa OCR reader apenas uma vez
 reader = easyocr.Reader(['pt'])
-print("Finished initializing OCR reader")
 
-@app.route('/')
-def read_aso():
-    print("Start reading image")
-    # Abre a imagem com PIL
-    image_pil = Image.open(IMAGE_PATH)
-    if image_pil.mode != 'RGB':
-        image_pil = image_pil.convert('RGB')
+@app.post("/upload-pdf/")
+async def upload_pdf(file: UploadFile = File(...)):
+    if file.content_type != "application/pdf":
+        return JSONResponse({"error": "Arquivo precisa ser PDF"}, status_code=400)
+    
+    pdf_bytes = await file.read()
 
-    # Converte para numpy array
-    image_np = np.array(image_pil)
+    # Converte PDF -> imagens
+    images = convert_from_bytes(pdf_bytes)
 
-    result = reader.readtext(image_np, detail=0)
-    print("Finished reading image")
+    results = []
+    for i, img in enumerate(images):
+        img_np = np.array(img.convert("RGB"))
+        text = reader.readtext(img_np, detail=0, paragraph=True)
+        results.append({
+            "page": i+1,
+            "text": text
+        })
 
-    print("Start creating response JSON")
-    response = jsonify({
-        'status': 'success',
-        'data': result
-    })
-    print("Result: " + str(result))
-    print("Finished creating response JSON")
-
-    return response
-
-
-if __name__ == '__main__':
-    print("Starting Flask server")
-    app.run(host='0.0.0.0', port=5000)
+    return {"ocr_result": results}
