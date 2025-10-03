@@ -5,7 +5,7 @@ import numpy as np
 
 app = Flask(__name__)
 
-IMAGE_PATH = 'testecpf.png'
+IMAGE_PATH = 'SARAH JORDANIA DA FONSECA_001533_1_page_1 (1).png'
 
 print("Start initializing OCR reader")
 reader = easyocr.Reader(['pt'])
