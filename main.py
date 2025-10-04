@@ -1,64 +1,54 @@
 import io
-import time
-from fastapi import FastAPI, UploadFile, File
-from fastapi.responses import JSONResponse
+from flask import Flask, request, jsonify
 from PIL import Image
 import numpy as np
 import easyocr
+import time
 
-app = FastAPI()
+app = Flask(__name__)
 
-# Variável global para armazenar o leitor OCR
-reader = None
-
-@app.on_event("startup")
-async def load_easyocr_model():
-    """
-    Carrega o modelo do EasyOCR na inicialização da API
-    para evitar atrasos no primeiro request.
-    """
-    global reader
-    print("🔄 [Startup] Carregando modelo EasyOCR (latin_g2)...")
-    start_time = time.time()
-    reader = easyocr.Reader(['pt'], recog_network='latin_g2', gpu=False)
-    print(f"✅ [Startup] Modelo EasyOCR carregado em {time.time() - start_time:.2f}s")
+# Carrega o modelo OCR apenas uma vez no startup
+print("🔄 Inicializando EasyOCR...")
+reader = easyocr.Reader(['pt'], recog_network='latin_g2', gpu=False)
+print("✅ EasyOCR carregado com sucesso!")
 
 
-@app.post("/upload-png/")
-async def upload_png(file: UploadFile = File(...)):
-    """
-    Endpoint que processa uma imagem PNG/JPEG e retorna o texto lido via OCR.
-    """
-    global reader
-    start_total = time.time()
-    print("\n📥 [upload-png] Iniciando processamento...")
-
-    if reader is None:
-        print("❌ [upload-png] Modelo OCR não está carregado.")
-        return JSONResponse({"error": "Modelo OCR ainda não foi carregado."}, status_code=503)
-
+@app.route('/upload-png', methods=['POST'])
+def upload_png():
+    start = time.time()
     try:
-        start_read = time.time()
-        image_bytes = await file.read()
-        print(f"⏱️ [upload-png] Leitura do arquivo concluída em {time.time() - start_read:.2f}s")
+        # Verifica se o arquivo foi enviado
+        if 'file' not in request.files:
+            return jsonify({'error': 'Nenhum arquivo enviado.'}), 400
 
-        start_open = time.time()
-        image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
-        print(f"🖼️ [upload-png] Conversão para imagem concluída em {time.time() - start_open:.2f}s")
+        file = request.files['file']
+
+        # Lê e converte imagem
+        img = Image.open(file.stream).convert("RGB")
+        image_np = np.array(img)
+
+        # Executa OCR
+        ocr_start = time.time()
+        text = reader.readtext(image_np, detail=0, paragraph=True)
+        ocr_time = time.time() - ocr_start
+
+        total_time = time.time() - start
+        print(f"✅ OCR concluído em {ocr_time:.2f}s | Tempo total {total_time:.2f}s")
+
+        return jsonify({
+            'status': 'success',
+            'ocr_result': text,
+            'time': round(total_time, 2)
+        })
 
     except Exception as e:
-        print(f"⚠️ [upload-png] Erro ao abrir imagem: {e}")
-        return JSONResponse({"error": "Arquivo enviado não é uma imagem válida"}, status_code=400)
+        return jsonify({'error': str(e)}), 500
 
-    start_np = time.time()
-    image_np = np.array(image)
-    print(f"🔢 [upload-png] Conversão para numpy array concluída em {time.time() - start_np:.2f}s")
 
-    start_ocr = time.time()
-    text = reader.readtext(image_np, detail=0, paragraph=True)
-    print(f"🔍 [upload-png] OCR concluído em {time.time() - start_ocr:.2f}s")
+@app.route('/')
+def home():
+    return jsonify({"status": "ok", "message": "API OCR Flask pronta!"})
 
-    total_time = time.time() - start_total
-    print(f"✅ [upload-png] Processo total concluído em {total_time:.2f}s")
 
-    return {"ocr_result": text, "processing_time": total_time}
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000)
