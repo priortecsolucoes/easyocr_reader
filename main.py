@@ -9,7 +9,7 @@ app = Flask(__name__)
 
 # Carrega o modelo OCR apenas uma vez no startup
 print("🔄 Inicializando EasyOCR...")
-reader = easyocr.Reader(['pt'], recog_network='latin_g2', gpu=False)
+reader = easyocr.Reader(['pt'])
 print("✅ EasyOCR carregado com sucesso!")
 
 
