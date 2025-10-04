@@ -1,23 +1,26 @@
 FROM python:3.10-slim
 
-# Instala dependências do sistema (inclui poppler para pdf2image)
+# Instala dependências do sistema (inclui pacotes necessários para o EasyOCR)
 RUN apt-get update && apt-get install -y \
-    poppler-utils \
-    tesseract-ocr \
     libgl1 \
+    tesseract-ocr \
+    poppler-utils \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Copia dependências
+# Copia dependências e instala
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copia código
+# Copia o código
 COPY . .
 
-# Porta para Railway
-EXPOSE 8080
+# Define a porta que o Railway vai expor
+EXPOSE 5000
 
-# Comando de inicialização
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080"]
+# Define a variável de ambiente para evitar o modo debug
+ENV FLASK_ENV=production
+
+# Comando para iniciar o servidor Flask
+CMD ["python", "main.py"]
