@@ -1,7 +1,4 @@
-fastapi
-uvicorn[standard]
+flask
 easyocr
-Pillow
 numpy
-torch
-python-multipart
+pillow
