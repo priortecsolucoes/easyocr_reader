@@ -5,6 +5,8 @@ import numpy as np
 import easyocr
 import time
 
+EXPECTED_PASSWORD = "Pr!ortecEasyOCR@2025"
+
 app = Flask(__name__)
 
 print("🔄 Inicializando EasyOCR...")
@@ -15,6 +17,10 @@ print("✅ EasyOCR carregado com sucesso!")
 def upload_png():
     start = time.time()
     try:
+        password = request.form.get('password', None)
+        if password != EXPECTED_PASSWORD:
+            return jsonify({'error': 'Senha inválida ou não fornecida.'}), 401
+            
         if 'file' not in request.files:
             return jsonify({'error': 'Nenhum arquivo enviado.'}), 400
 
