@@ -64,8 +64,7 @@ def upload_png():
             print(f"✅ OCR completo fracionado concluído em {ocr_time:.2f}s")
             return jsonify({
                 'status': 'success',
-                'ocr_result': full_text,
-                'partial_text': partial_text,
+                'ocr_result': full_text
                 'time': round(ocr_time, 2)
             })
         else:
@@ -74,7 +73,7 @@ def upload_png():
             return jsonify({
                 'status': 'not_identified',
                 'message': 'Documento não identificado pelas palavras-chave fornecidas no início.',
-                'partial_text': partial_text,
+                'ocr_result': partial_text,
                 'time': round(total_time, 2)
             })
 
