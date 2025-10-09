@@ -70,7 +70,7 @@ def upload_png():
             print(f"✅ OCR completo fracionado concluído em {ocr_time:.2f}s")
             return jsonify({
                 'status': 'success',
-                'ocr_result': full_text
+                'ocr_result': full_text,
                 'time': round(ocr_time, 2)
             })
         else:
