@@ -4,6 +4,9 @@ FROM python:3.10-slim
 RUN apt-get update && apt-get install -y \
     libgl1 \
     poppler-utils \
+    build-essential \       # gcc, g++, make, etc.
+    cmake \                 # necessário para algumas extensões PyTorch
+    ninja-build \           # Ninja para compilar rapidamente as extensões
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
