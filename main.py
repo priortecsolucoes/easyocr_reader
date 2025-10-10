@@ -10,7 +10,7 @@ EXPECTED_PASSWORD = "Pr!ortecEasyOCR@2025"
 app = Flask(__name__)
 
 print("🔄 Inicializando EasyOCR...")
-reader = easyocr.Reader(['pt'])
+reader = easyocr.Reader(['pt'], detect_network='craft', recog_network='standard')
 print("✅ EasyOCR carregado com sucesso!")
 
 @app.route('/upload-png', methods=['POST'])
