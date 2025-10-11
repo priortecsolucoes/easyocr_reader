@@ -42,7 +42,7 @@ def run_trocr_bottom_half(pil_image: Image.Image, percent_bottom: float = 0.35) 
 
     # Executa TrOCR
     pixel_values = processor(images=bottom_crop, return_tensors="pt").pixel_values.to(device)
-    generated_ids = model.generate(pixel_values, max_length=128)
+    generated_ids = model.generate(pixel_values, max_length=512)
     text = processor.batch_decode(generated_ids, skip_special_tokens=True)[0]
     return text.strip()
 
@@ -118,4 +118,35 @@ def upload_png():
 
         easy_text_joined = " ".join(easy_text)
 
-        # -----------------------------
+        # -------------------------------
+        # 🔹 Leitura com TrOCR (metade inferior)
+        # -------------------------------
+        trocr_text = run_trocr_bottom_half(img, percent_bottom=percent_trocr)
+
+        # -------------------------------
+        # 🔹 Resultado combinado
+        # -------------------------------
+        combined_result = easy_text_joined.strip() + "\n---\n" + trocr_text.strip()
+        total_time = time.time() - start
+        print(f"✅ OCR (EasyOCR + TrOCR) concluído em {total_time:.2f}s")
+
+        return jsonify({
+            'status': 'success',
+            'easyocr_text': easy_text_joined,
+            'trocr_text': trocr_text,
+            'ocr_result': combined_result,
+            'time': round(total_time, 2)
+        })
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+# -------------------------------
+# Healthcheck simples
+# -------------------------------
+@app.route('/')
+def home():
+    return jsonify({"status": "ok", "message": "API OCR Flask pronta!"})
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000)
