@@ -22,30 +22,19 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 model.to(device)
 print("✅ Donut carregado com sucesso!")
 
-# -------------------------------
-# Função auxiliar para Donut
-# -------------------------------
 def run_donut_bottom_half(pil_image: Image.Image, percent_bottom: float = 0.5) -> str:
     width, height = pil_image.size
     crop_start = int(height * (1 - percent_bottom))
-    bottom_crop = pil_image.crop((0, crop_start, width, height))
+    bottom_crop = pil_image.crop((0, crop_start, width, height)).convert("RGB")
 
-    # converte para RGB e redimensiona se necessário
-    bottom_crop = bottom_crop.convert("RGB")
+    # Converte a imagem para tensor e adiciona o prompt de texto livre
+    inputs = processor(images=bottom_crop, return_tensors="pt", task_prompt="<s_text>").to(device)
 
-    # Prepara entrada para Donut
-    pixel_values = processor(images=bottom_crop, return_tensors="pt").pixel_values.to(device)
-
-    # Prompt para extração de texto livre
-    task_prompt = "<s_text>"
-
-    outputs = model.generate(pixel_values, decoder_input_ids=processor.get_decoder_prompt_ids(task=task_prompt, batch_size=1))
+    # Geração de texto
+    outputs = model.generate(**inputs, max_length=1024)
     text = processor.batch_decode(outputs, skip_special_tokens=True)[0]
     return text.strip()
 
-# -------------------------------
-# Endpoint principal
-# -------------------------------
 @app.route('/upload-png', methods=['POST'])
 def upload_png():
     start = time.time()
@@ -69,10 +58,8 @@ def upload_png():
 
         try:
             percent = float(percent_str)
-            if not (0 < percent <= 1):
-                raise ValueError
             percent_donut = float(percent_donut_str)
-            if not (0 < percent_donut <= 1):
+            if not (0 < percent <= 1) or not (0 < percent_donut <= 1):
                 raise ValueError
         except Exception:
             return jsonify({'error': 'Percentual inválido. Use um valor entre 0 e 1.'}), 400
@@ -80,9 +67,6 @@ def upload_png():
         img = Image.open(file.stream).convert("RGB")
         width, height = img.size
 
-        # -------------------------------
-        # EasyOCR
-        # -------------------------------
         if not keywords:
             image_np = np.array(img)
             easy_text = reader.readtext(image_np, detail=0, paragraph=True)
@@ -107,15 +91,8 @@ def upload_png():
                 })
 
         easy_text_joined = " ".join(easy_text)
-
-        # -------------------------------
-        # Donut na metade inferior
-        # -------------------------------
         donut_text = run_donut_bottom_half(img, percent_bottom=percent_donut)
 
-        # -------------------------------
-        # Resultado combinado
-        # -------------------------------
         combined_result = easy_text_joined.strip() + "\n---\n" + donut_text.strip()
         total_time = time.time() - start
 
