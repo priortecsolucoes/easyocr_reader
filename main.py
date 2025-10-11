@@ -34,8 +34,8 @@ def run_trocr_bottom_half(pil_image: Image.Image, percent_bottom: float = 0.35) 
     crop_start = int(height * (1 - percent_bottom))
     bottom_crop = pil_image.crop((0, crop_start, width, height))
 
-    # Pré-processamento
-    bottom_crop = bottom_crop.convert("L")  # escala de cinza
+    # Pré-processamento mantendo RGB
+    bottom_crop = bottom_crop.convert("RGB")
     bottom_crop = bottom_crop.filter(ImageFilter.MedianFilter(size=3))
     bottom_crop = ImageEnhance.Contrast(bottom_crop).enhance(2.0)
     bottom_crop = ImageEnhance.Sharpness(bottom_crop).enhance(1.5)
@@ -102,8 +102,8 @@ def upload_png():
             partial_text_joined = " ".join(partial_text).upper()
 
             if any(keyword in partial_text_joined for keyword in keywords):
-                bottom_crop = img.crop((0, int(height * percent), width, height))
-                image_bottom_np = np.array(bottom_crop)
+                bottom_crop_np = img.crop((0, int(height * percent), width, height))
+                image_bottom_np = np.array(bottom_crop_np)
                 rest_text = reader.readtext(image_bottom_np, detail=0, paragraph=True)
                 easy_text = partial_text + rest_text
             else:
@@ -119,7 +119,7 @@ def upload_png():
         easy_text_joined = " ".join(easy_text)
 
         # -------------------------------
-        # 🔹 Leitura com TrOCR (metade inferior)
+        # 🔹 Leitura com TrOCR na metade inferior
         # -------------------------------
         trocr_text = run_trocr_bottom_half(img, percent_bottom=percent_trocr)
 
@@ -128,6 +128,7 @@ def upload_png():
         # -------------------------------
         combined_result = easy_text_joined.strip() + "\n---\n" + trocr_text.strip()
         total_time = time.time() - start
+
         print(f"✅ OCR (EasyOCR + TrOCR) concluído em {total_time:.2f}s")
 
         return jsonify({
@@ -141,9 +142,6 @@ def upload_png():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-# -------------------------------
-# Healthcheck simples
-# -------------------------------
 @app.route('/')
 def home():
     return jsonify({"status": "ok", "message": "API OCR Flask pronta!"})
