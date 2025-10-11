@@ -1,9 +1,6 @@
 flask
-easyocr
-torch
-transformers
 pillow
 numpy
-opencv-python-headless
-protobuf
-sentencepiece
+easyocr
+paddleocr
+paddlepaddle
