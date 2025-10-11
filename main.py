@@ -18,7 +18,7 @@ print("🔄 Inicializando EasyOCR...")
 reader = easyocr.Reader(['pt'])
 print("✅ EasyOCR carregado com sucesso!")
 
-print("🔄 Inicializando TrOCR (impresso)...")
+print("🔄 Inicializando TrOCR (manuscrito)...")
 processor = TrOCRProcessor.from_pretrained("microsoft/trocr-base-handwritten")
 model = VisionEncoderDecoderModel.from_pretrained("microsoft/trocr-base-handwritten")
 device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -28,8 +28,11 @@ print("✅ TrOCR carregado com sucesso!")
 # -------------------------------
 # Função auxiliar para ler com TrOCR
 # -------------------------------
-def run_trocr(pil_image: Image.Image) -> str:
-    pixel_values = processor(images=pil_image, return_tensors="pt").pixel_values.to(device)
+def run_trocr_bottom_half(pil_image: Image.Image) -> str:
+    """Executa o TrOCR apenas na metade inferior da imagem."""
+    width, height = pil_image.size
+    bottom_half = pil_image.crop((0, height // 2, width, height))  # metade inferior
+    pixel_values = processor(images=bottom_half, return_tensors="pt").pixel_values.to(device)
     generated_ids = model.generate(pixel_values)
     text = processor.batch_decode(generated_ids, skip_special_tokens=True)[0]
     return text.strip()
@@ -97,9 +100,9 @@ def upload_png():
                 })
 
         # -------------------------------
-        # 🔹 Leitura com TrOCR
+        # 🔹 Leitura com TrOCR (apenas metade inferior)
         # -------------------------------
-        trocr_text = run_trocr(img)
+        trocr_text = run_trocr_bottom_half(img)
 
         # -------------------------------
         # 🔹 Resultado combinado
