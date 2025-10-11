@@ -2,10 +2,10 @@ import io
 import time
 import numpy as np
 from flask import Flask, request, jsonify
-from PIL import Image, ImageEnhance, ImageFilter
+from PIL import Image
 import easyocr
-from transformers import TrOCRProcessor, VisionEncoderDecoderModel
 import torch
+from transformers import DonutProcessor, VisionEncoderDecoderModel
 
 EXPECTED_PASSWORD = "Pr!ortecEasyOCR@2025"
 
@@ -18,31 +18,20 @@ print("🔄 Inicializando EasyOCR...")
 reader = easyocr.Reader(['pt'])
 print("✅ EasyOCR carregado com sucesso!")
 
-print("🔄 Inicializando TrOCR (manuscrito)...")
-processor = TrOCRProcessor.from_pretrained("microsoft/trocr-large-handwritten")
-model = VisionEncoderDecoderModel.from_pretrained("microsoft/trocr-large-handwritten")
+print("🔄 Inicializando Donut (documento completo)...")
+processor = DonutProcessor.from_pretrained("naver-clova-ix/donut-base")
+model = VisionEncoderDecoderModel.from_pretrained("naver-clova-ix/donut-base")
 device = "cuda" if torch.cuda.is_available() else "cpu"
 model.to(device)
-print("✅ TrOCR carregado com sucesso!")
+print("✅ Donut carregado com sucesso!")
 
 # -------------------------------
-# Função auxiliar para ler com TrOCR na parte inferior
+# Função auxiliar para leitura com Donut
 # -------------------------------
-def run_trocr_bottom_half(pil_image: Image.Image, percent_bottom: float = 0.35) -> str:
-    """Executa o TrOCR apenas na parte inferior da imagem, com pré-processamento."""
-    width, height = pil_image.size
-    crop_start = int(height * (1 - percent_bottom))
-    bottom_crop = pil_image.crop((0, crop_start, width, height))
-
-    # Pré-processamento mantendo RGB
-    bottom_crop = bottom_crop.convert("RGB")
-    bottom_crop = bottom_crop.filter(ImageFilter.MedianFilter(size=3))
-    bottom_crop = ImageEnhance.Contrast(bottom_crop).enhance(2.0)
-    bottom_crop = ImageEnhance.Sharpness(bottom_crop).enhance(1.5)
-
-    # Executa TrOCR
-    pixel_values = processor(images=bottom_crop, return_tensors="pt").pixel_values.to(device)
-    generated_ids = model.generate(pixel_values, max_length=512)
+def run_donut_full(pil_image: Image.Image) -> str:
+    pil_image = pil_image.convert("RGB")
+    pixel_values = processor(images=pil_image, return_tensors="pt").pixel_values.to(device)
+    generated_ids = model.generate(pixel_values, max_length=1024)
     text = processor.batch_decode(generated_ids, skip_special_tokens=True)[0]
     return text.strip()
 
@@ -56,7 +45,7 @@ def upload_png():
         password = request.form.get('password', None)
         if password != EXPECTED_PASSWORD:
             return jsonify({'error': 'Senha inválida ou não fornecida.'}), 401
-            
+
         if 'file' not in request.files:
             return jsonify({'error': 'Nenhum arquivo enviado.'}), 400
 
@@ -64,7 +53,6 @@ def upload_png():
 
         keywords_str = request.form.get('keywords', None)
         percent_str = request.form.get('percent', '0.25')
-        percent_trocr_str = request.form.get('percent_trocr', '0.35')  # fração inferior para TrOCR
 
         # -------------------------------
         # Parâmetros
@@ -76,9 +64,6 @@ def upload_png():
         try:
             percent = float(percent_str)
             if not (0 < percent <= 1):
-                raise ValueError
-            percent_trocr = float(percent_trocr_str)
-            if not (0 < percent_trocr <= 1):
                 raise ValueError
         except Exception:
             return jsonify({'error': 'Percentual inválido. Use um valor entre 0 e 1.'}), 400
@@ -102,8 +87,8 @@ def upload_png():
             partial_text_joined = " ".join(partial_text).upper()
 
             if any(keyword in partial_text_joined for keyword in keywords):
-                bottom_crop_np = img.crop((0, int(height * percent), width, height))
-                image_bottom_np = np.array(bottom_crop_np)
+                bottom_crop = img.crop((0, int(height * percent), width, height))
+                image_bottom_np = np.array(bottom_crop)
                 rest_text = reader.readtext(image_bottom_np, detail=0, paragraph=True)
                 easy_text = partial_text + rest_text
             else:
@@ -119,22 +104,22 @@ def upload_png():
         easy_text_joined = " ".join(easy_text)
 
         # -------------------------------
-        # 🔹 Leitura com TrOCR na metade inferior
+        # 🔹 Leitura com Donut
         # -------------------------------
-        trocr_text = run_trocr_bottom_half(img, percent_bottom=percent_trocr)
+        donut_text = run_donut_full(img)
 
         # -------------------------------
         # 🔹 Resultado combinado
         # -------------------------------
-        combined_result = easy_text_joined.strip() + "\n---\n" + trocr_text.strip()
+        combined_result = easy_text_joined.strip() + "\n---\n" + donut_text.strip()
         total_time = time.time() - start
 
-        print(f"✅ OCR (EasyOCR + TrOCR) concluído em {total_time:.2f}s")
+        print(f"✅ OCR (EasyOCR + Donut) concluído em {total_time:.2f}s")
 
         return jsonify({
             'status': 'success',
             'easyocr_text': easy_text_joined,
-            'trocr_text': trocr_text,
+            'donut_text': donut_text,
             'ocr_result': combined_result,
             'time': round(total_time, 2)
         })
