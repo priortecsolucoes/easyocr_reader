@@ -5,3 +5,5 @@ transformers
 pillow
 numpy
 opencv-python-headless
+protobuf
+sentencepiece
