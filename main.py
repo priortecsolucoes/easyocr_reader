@@ -19,8 +19,8 @@ reader = easyocr.Reader(['pt'])
 print("✅ EasyOCR carregado com sucesso!")
 
 print("🔄 Inicializando TrOCR (impresso)...")
-processor = TrOCRProcessor.from_pretrained("microsoft/trocr-large-printed")
-model = VisionEncoderDecoderModel.from_pretrained("microsoft/trocr-large-printed")
+processor = TrOCRProcessor.from_pretrained("microsoft/trocr-base-handwritten")
+model = VisionEncoderDecoderModel.from_pretrained("microsoft/trocr-base-handwritten")
 device = "cuda" if torch.cuda.is_available() else "cpu"
 model.to(device)
 print("✅ TrOCR carregado com sucesso!")
