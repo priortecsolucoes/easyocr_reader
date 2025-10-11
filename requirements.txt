@@ -2,3 +2,6 @@ flask
 easyocr
 numpy
 pillow
+torch
+torchvision
+transformers
