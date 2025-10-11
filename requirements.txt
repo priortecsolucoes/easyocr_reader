@@ -1,6 +1,6 @@
-flask
-pillow
-numpy
+torch
+torchvision
+torchaudio
 easyocr
-paddleocr
-paddlepaddle
+python-doctr[torch]
+opencv-python-headless
