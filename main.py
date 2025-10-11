@@ -2,9 +2,10 @@ import io
 import time
 import numpy as np
 from flask import Flask, request, jsonify
-from PIL import Image
-from paddleocr import PaddleOCR
+from PIL import Image, ImageEnhance, ImageFilter
 import easyocr
+from paddleocr import PaddleOCR
+import torch
 
 EXPECTED_PASSWORD = "Pr!ortecEasyOCR@2025"
 
@@ -17,21 +18,23 @@ print("🔄 Inicializando EasyOCR...")
 reader = easyocr.Reader(['pt'])
 print("✅ EasyOCR carregado com sucesso!")
 
-print("🔄 Inicializando PaddleOCR (manuscritos na parte inferior)...")
-ocr = PaddleOCR(lang="pt", use_textline_orientation=False)
+print("🔄 Inicializando PaddleOCR (todo documento)...")
+ocr = PaddleOCR(use_angle_cls=False, lang='pt', rec=True)
 print("✅ PaddleOCR carregado com sucesso!")
 
 # -------------------------------
-# Função auxiliar para ler a parte inferior com PaddleOCR
+# Função auxiliar para ler com PaddleOCR
 # -------------------------------
-def run_paddle_bottom_half(pil_image: Image.Image, percent_bottom: float = 0.35):
-    width, height = pil_image.size
-    crop_start = int(height * (1 - percent_bottom))
-    bottom_crop = pil_image.crop((0, crop_start, width, height))
-    image_np = np.array(bottom_crop)
+def run_paddle_full_image(pil_image: Image.Image) -> str:
+    # Pré-processamento
+    img = pil_image.convert("L")  # escala de cinza
+    img = img.filter(ImageFilter.MedianFilter(size=3))
+    img = ImageEnhance.Contrast(img).enhance(2.0)
+    img = ImageEnhance.Sharpness(img).enhance(1.5)
+    img_np = np.array(img)
 
-    result = ocr.ocr(image_np)
-    # Extrai apenas os textos reconhecidos
+    # OCR
+    result = ocr.ocr(img_np)
     texts = [line[1][0] for line in result[0]] if result else []
     return " ".join(texts).strip()
 
@@ -52,12 +55,8 @@ def upload_png():
         file = request.files['file']
 
         keywords_str = request.form.get('keywords', None)
-        percent_str = request.form.get('percent', '0.25')  # fração superior para detecção de palavras-chave
-        percent_paddle_str = request.form.get('percent_paddle', '0.35')  # fração inferior para manuscritos
+        percent_str = request.form.get('percent', '0.25')
 
-        # -------------------------------
-        # Parâmetros
-        # -------------------------------
         keywords = []
         if keywords_str and keywords_str.strip():
             keywords = [k.strip().upper() for k in keywords_str.split(',') if k.strip()]
@@ -66,15 +65,9 @@ def upload_png():
             percent = float(percent_str)
             if not (0 < percent <= 1):
                 raise ValueError
-            percent_paddle = float(percent_paddle_str)
-            if not (0 < percent_paddle <= 1):
-                raise ValueError
         except Exception:
             return jsonify({'error': 'Percentual inválido. Use um valor entre 0 e 1.'}), 400
 
-        # -------------------------------
-        # Carrega imagem
-        # -------------------------------
         img = Image.open(file.stream).convert("RGB")
         width, height = img.size
 
@@ -108,9 +101,9 @@ def upload_png():
         easy_text_joined = " ".join(easy_text)
 
         # -------------------------------
-        # 🔹 Leitura com PaddleOCR na parte inferior
+        # 🔹 Leitura com PaddleOCR
         # -------------------------------
-        paddle_text = run_paddle_bottom_half(img, percent_bottom=percent_paddle)
+        paddle_text = run_paddle_full_image(img)
 
         # -------------------------------
         # 🔹 Resultado combinado
