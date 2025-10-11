@@ -1,134 +1,68 @@
-import io
-import time
+import os
+import cv2
 import numpy as np
-from flask import Flask, request, jsonify
-from PIL import Image
+import torch
 import easyocr
-from paddleocr import PaddleOCR
+from doctr.io import DocumentFile
+from doctr.models import ocr_predictor
 
-EXPECTED_PASSWORD = "Pr!ortecEasyOCR@2025"
-
-app = Flask(__name__)
-
-# -------------------------------
-# 🔄 Inicialização dos modelos OCR
-# -------------------------------
 print("🔄 Inicializando EasyOCR...")
-reader = easyocr.Reader(['pt'])
+easyocr_reader = easyocr.Reader(['pt'])
 print("✅ EasyOCR carregado com sucesso!")
 
-print("🔄 Inicializando PaddleOCR (todo documento)...")
-ocr = PaddleOCR(lang='pt', use_textline_orientation=False)
-print("✅ PaddleOCR carregado com sucesso!")
+print("🔄 Inicializando docTR (manuscritos na parte inferior)...")
+doctr_model = ocr_predictor(pretrained=True)
+print("✅ docTR carregado com sucesso!")
 
-# -------------------------------
-# Função auxiliar para ler com PaddleOCR
-# -------------------------------
-def run_paddleocr(pil_image: Image.Image) -> str:
-    image_np = np.array(pil_image)
-    results = ocr.ocr(image_np)
-    lines = []
-    for page in results:
-        for line in page:
-            text = line[1][0]  # texto reconhecido
-            lines.append(text)
-    return " ".join(lines).strip()
+def read_text_easyocr(image_path):
+    print("📘 Iniciando leitura com EasyOCR...")
+    results = easyocr_reader.readtext(image_path, detail=0, paragraph=True)
+    return "\n".join(results)
 
-# -------------------------------
-# Endpoint principal
-# -------------------------------
-@app.route('/upload-png', methods=['POST'])
-def upload_png():
-    start = time.time()
+def read_text_doctr(image_path):
+    print("✍️ Iniciando leitura manuscrita com docTR (parte inferior)...")
+
+    # Carrega imagem
+    img = cv2.imread(image_path)
+    h, w, _ = img.shape
+
+    # Recorta a parte inferior (ex: 40% inferiores do documento)
+    bottom_crop = img[int(h * 0.6):, :]
+
+    # Salva crop temporário
+    cropped_path = "bottom_crop.jpg"
+    cv2.imwrite(cropped_path, bottom_crop)
+
+    # Processa com docTR
+    doc = DocumentFile.from_images(cropped_path)
+    result = doctr_model(doc)
+
+    # Concatena o texto detectado
+    doctr_text = ""
+    for page in result.pages:
+        for block in page.blocks:
+            for line in block.lines:
+                doctr_text += " ".join([word.value for word in line.words]) + "\n"
+
+    return doctr_text.strip()
+
+def process_document(image_path):
     try:
-        password = request.form.get('password', None)
-        if password != EXPECTED_PASSWORD:
-            return jsonify({'error': 'Senha inválida ou não fornecida.'}), 401
-            
-        if 'file' not in request.files:
-            return jsonify({'error': 'Nenhum arquivo enviado.'}), 400
-
-        file = request.files['file']
-
-        keywords_str = request.form.get('keywords', None)
-        percent_str = request.form.get('percent', '0.25')
-
-        # -------------------------------
-        # Parâmetros
-        # -------------------------------
-        keywords = []
-        if keywords_str and keywords_str.strip():
-            keywords = [k.strip().upper() for k in keywords_str.split(',') if k.strip()]
-
-        try:
-            percent = float(percent_str)
-            if not (0 < percent <= 1):
-                raise ValueError
-        except Exception:
-            return jsonify({'error': 'Percentual inválido. Use um valor entre 0 e 1.'}), 400
-
-        # -------------------------------
-        # Carrega imagem
-        # -------------------------------
-        img = Image.open(file.stream).convert("RGB")
-        width, height = img.size
-
-        # -------------------------------
-        # 🔹 Leitura com EasyOCR
-        # -------------------------------
-        if not keywords:
-            image_np = np.array(img)
-            easy_text = reader.readtext(image_np, detail=0, paragraph=True)
-        else:
-            top_crop = img.crop((0, 0, width, int(height * percent)))
-            image_top_np = np.array(top_crop)
-            partial_text = reader.readtext(image_top_np, detail=0, paragraph=True)
-            partial_text_joined = " ".join(partial_text).upper()
-
-            if any(keyword in partial_text_joined for keyword in keywords):
-                bottom_crop = img.crop((0, int(height * percent), width, height))
-                image_bottom_np = np.array(bottom_crop)
-                rest_text = reader.readtext(image_bottom_np, detail=0, paragraph=True)
-                easy_text = partial_text + rest_text
-            else:
-                total_time = time.time() - start
-                print("⏹ Documento não identificado pelas palavras-chave fornecidas.")
-                return jsonify({
-                    'status': 'not_identified',
-                    'message': 'Documento não identificado pelas palavras-chave fornecidas no início.',
-                    'ocr_result': partial_text,
-                    'time': round(total_time, 2)
-                })
-
-        easy_text_joined = " ".join(easy_text)
-
-        # -------------------------------
-        # 🔹 Leitura com PaddleOCR
-        # -------------------------------
-        paddle_text = run_paddleocr(img)
-
-        # -------------------------------
-        # 🔹 Resultado combinado
-        # -------------------------------
-        combined_result = easy_text_joined.strip() + "\n---\n" + paddle_text.strip()
-        total_time = time.time() - start
-
-        print(f"✅ OCR (EasyOCR + PaddleOCR) concluído em {total_time:.2f}s")
-
-        return jsonify({
-            'status': 'success',
-            'easyocr_text': easy_text_joined,
-            'paddle_text': paddle_text,
-            'ocr_result': combined_result,
-            'time': round(total_time, 2)
-        })
-
+        easy_text = read_text_easyocr(image_path)
+        doctr_text = read_text_doctr(image_path)
+        return {
+            "easyocr_text": easy_text,
+            "doctr_text": doctr_text
+        }
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        print(f"❌ Erro na API OCR: {e}")
+        return {"error": str(e)}
 
-@app.route('/')
-def home():
-    return jsonify({"status": "ok", "message": "API OCR Flask pronta!"})
-
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
+if __name__ == "__main__":
+    test_image = "documento_teste.jpg"
+    if os.path.exists(test_image):
+        result = process_document(test_image)
+        print("📄 Resultado EasyOCR:\n", result["easyocr_text"][:500])
+        print("🖋️ Resultado docTR:\n", result["doctr_text"][:500])
+    else:
+        print("⚠️ Nenhum arquivo 'documento_teste.jpg' encontrado para teste.")
