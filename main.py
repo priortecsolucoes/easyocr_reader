@@ -11,23 +11,14 @@ EXPECTED_PASSWORD = "Pr!ortecEasyOCR@2025"
 
 app = Flask(__name__)
 
-# -------------------------------
-# 🔄 Inicialização EasyOCR
-# -------------------------------
 print("🔄 Inicializando EasyOCR...")
 reader = easyocr.Reader(['pt'])
 print("✅ EasyOCR carregado com sucesso!")
 
-# -------------------------------
-# 🔄 Inicialização docTR (Doctr)
-# -------------------------------
 print("🔄 Inicializando docTR (manuscritos)...")
 doc_tr_model = ocr_predictor(pretrained=True)
 print("✅ docTR carregado com sucesso!")
 
-# -------------------------------
-# Endpoint principal
-# -------------------------------
 @app.route('/upload-png', methods=['POST'])
 def upload_png():
     start = time.time()
@@ -43,9 +34,6 @@ def upload_png():
         keywords_str = request.form.get('keywords', None)
         percent_str = request.form.get('percent', '0.25')
 
-        # -------------------------------
-        # Parâmetros
-        # -------------------------------
         keywords = []
         if keywords_str and keywords_str.strip():
             keywords = [k.strip().upper() for k in keywords_str.split(',') if k.strip()]
@@ -64,18 +52,17 @@ def upload_png():
         width, height = img.size
 
         # -------------------------------
-        # Leitura EasyOCR
+        # EasyOCR
         # -------------------------------
         image_np = np.array(img)
         easy_text = reader.readtext(image_np, detail=0, paragraph=True)
 
         # -------------------------------
-        # Leitura docTR
+        # docTR
         # -------------------------------
-        # Executa em **toda imagem** ou somente na parte inferior se quiser limitar:
-        # crop_start = int(height * 0.65)
-        # img_bottom = img.crop((0, crop_start, width, height))
-        doc_tr_result = doc_tr_model([img])[0]  # retorna objeto Document
+        # docTR precisa de np.array float32 em range [0, 1]
+        doc_tr_input = np.array(img).astype("float32") / 255.0
+        doc_tr_result = doc_tr_model([doc_tr_input])[0]
         doc_tr_text_lines = [line.value for block in doc_tr_result.blocks for line in block.lines]
         doc_tr_text = " ".join(doc_tr_text_lines)
 
