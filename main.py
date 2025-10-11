@@ -4,16 +4,13 @@ import numpy as np
 from flask import Flask, request, jsonify
 from PIL import Image
 import easyocr
-import torch
 from transformers import DonutProcessor, VisionEncoderDecoderModel
+import torch
 
 EXPECTED_PASSWORD = "Pr!ortecEasyOCR@2025"
 
 app = Flask(__name__)
 
-# -------------------------------
-# 🔄 Inicialização dos modelos OCR
-# -------------------------------
 print("🔄 Inicializando EasyOCR...")
 reader = easyocr.Reader(['pt'])
 print("✅ EasyOCR carregado com sucesso!")
@@ -25,19 +22,19 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 model.to(device)
 print("✅ Donut carregado com sucesso!")
 
-# -------------------------------
-# Função auxiliar para leitura com Donut
-# -------------------------------
-def run_donut_full(pil_image: Image.Image) -> str:
-    pil_image = pil_image.convert("RGB")
-    pixel_values = processor(images=pil_image, return_tensors="pt").pixel_values.to(device)
+def run_donut_full_text(image: Image.Image) -> str:
+    w, h = image.size
+    max_dim = 1024
+    scale = max_dim / max(w, h)
+    new_size = (int(w * scale), int(h * scale))
+    image_resized = image.resize(new_size)
+
+    prompt = "Extract text:"
+    pixel_values = processor(image_resized, return_tensors="pt").pixel_values.to(device)
     generated_ids = model.generate(pixel_values, max_length=1024)
     text = processor.batch_decode(generated_ids, skip_special_tokens=True)[0]
     return text.strip()
 
-# -------------------------------
-# Endpoint principal
-# -------------------------------
 @app.route('/upload-png', methods=['POST'])
 def upload_png():
     start = time.time()
@@ -54,9 +51,6 @@ def upload_png():
         keywords_str = request.form.get('keywords', None)
         percent_str = request.form.get('percent', '0.25')
 
-        # -------------------------------
-        # Parâmetros
-        # -------------------------------
         keywords = []
         if keywords_str and keywords_str.strip():
             keywords = [k.strip().upper() for k in keywords_str.split(',') if k.strip()]
@@ -68,15 +62,10 @@ def upload_png():
         except Exception:
             return jsonify({'error': 'Percentual inválido. Use um valor entre 0 e 1.'}), 400
 
-        # -------------------------------
-        # Carrega imagem
-        # -------------------------------
         img = Image.open(file.stream).convert("RGB")
         width, height = img.size
 
-        # -------------------------------
-        # 🔹 Leitura com EasyOCR
-        # -------------------------------
+        # EasyOCR
         if not keywords:
             image_np = np.array(img)
             easy_text = reader.readtext(image_np, detail=0, paragraph=True)
@@ -93,7 +82,6 @@ def upload_png():
                 easy_text = partial_text + rest_text
             else:
                 total_time = time.time() - start
-                print("⏹ Documento não identificado pelas palavras-chave fornecidas.")
                 return jsonify({
                     'status': 'not_identified',
                     'message': 'Documento não identificado pelas palavras-chave fornecidas no início.',
@@ -103,17 +91,11 @@ def upload_png():
 
         easy_text_joined = " ".join(easy_text)
 
-        # -------------------------------
-        # 🔹 Leitura com Donut
-        # -------------------------------
-        donut_text = run_donut_full(img)
+        # Donut OCR
+        donut_text = run_donut_full_text(img)
 
-        # -------------------------------
-        # 🔹 Resultado combinado
-        # -------------------------------
         combined_result = easy_text_joined.strip() + "\n---\n" + donut_text.strip()
         total_time = time.time() - start
-
         print(f"✅ OCR (EasyOCR + Donut) concluído em {total_time:.2f}s")
 
         return jsonify({
