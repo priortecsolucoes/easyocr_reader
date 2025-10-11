@@ -3,10 +3,10 @@ FROM python:3.10-slim
 RUN apt-get update && apt-get install -y \
     libgl1 \
     poppler-utils \
-    build-essential \  
-    cmake \            
-    ninja-build \      
-    git \              
+    build-essential \
+    cmake \
+    ninja-build \
+    git \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -16,9 +16,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-ENV FLASK_ENV=production
-ENV HF_HOME=/root/.cache/huggingface  
-
 EXPOSE 5000
+ENV FLASK_ENV=production
 
 CMD ["python", "main.py"]
