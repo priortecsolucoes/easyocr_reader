@@ -2,10 +2,9 @@ import io
 import time
 import numpy as np
 from flask import Flask, request, jsonify
-from PIL import Image, ImageEnhance, ImageFilter
+from PIL import Image
 import easyocr
 from paddleocr import PaddleOCR
-import torch
 
 EXPECTED_PASSWORD = "Pr!ortecEasyOCR@2025"
 
@@ -19,24 +18,21 @@ reader = easyocr.Reader(['pt'])
 print("✅ EasyOCR carregado com sucesso!")
 
 print("🔄 Inicializando PaddleOCR (todo documento)...")
-ocr = PaddleOCR(use_angle_cls=False, lang='pt', rec=True)
+ocr = PaddleOCR(lang='pt', use_textline_orientation=False)
 print("✅ PaddleOCR carregado com sucesso!")
 
 # -------------------------------
 # Função auxiliar para ler com PaddleOCR
 # -------------------------------
-def run_paddle_full_image(pil_image: Image.Image) -> str:
-    # Pré-processamento
-    img = pil_image.convert("L")  # escala de cinza
-    img = img.filter(ImageFilter.MedianFilter(size=3))
-    img = ImageEnhance.Contrast(img).enhance(2.0)
-    img = ImageEnhance.Sharpness(img).enhance(1.5)
-    img_np = np.array(img)
-
-    # OCR
-    result = ocr.ocr(img_np)
-    texts = [line[1][0] for line in result[0]] if result else []
-    return " ".join(texts).strip()
+def run_paddleocr(pil_image: Image.Image) -> str:
+    image_np = np.array(pil_image)
+    results = ocr.ocr(image_np)
+    lines = []
+    for page in results:
+        for line in page:
+            text = line[1][0]  # texto reconhecido
+            lines.append(text)
+    return " ".join(lines).strip()
 
 # -------------------------------
 # Endpoint principal
@@ -57,6 +53,9 @@ def upload_png():
         keywords_str = request.form.get('keywords', None)
         percent_str = request.form.get('percent', '0.25')
 
+        # -------------------------------
+        # Parâmetros
+        # -------------------------------
         keywords = []
         if keywords_str and keywords_str.strip():
             keywords = [k.strip().upper() for k in keywords_str.split(',') if k.strip()]
@@ -68,6 +67,9 @@ def upload_png():
         except Exception:
             return jsonify({'error': 'Percentual inválido. Use um valor entre 0 e 1.'}), 400
 
+        # -------------------------------
+        # Carrega imagem
+        # -------------------------------
         img = Image.open(file.stream).convert("RGB")
         width, height = img.size
 
@@ -103,7 +105,7 @@ def upload_png():
         # -------------------------------
         # 🔹 Leitura com PaddleOCR
         # -------------------------------
-        paddle_text = run_paddle_full_image(img)
+        paddle_text = run_paddleocr(img)
 
         # -------------------------------
         # 🔹 Resultado combinado
