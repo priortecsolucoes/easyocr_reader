@@ -1,6 +1,5 @@
 FROM python:3.10-slim
 
-# Instala dependências do sistema necessárias para EasyOCR e TrOCR
 RUN apt-get update && apt-get install -y \
     libgl1 \
     poppler-utils \
@@ -12,19 +11,14 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 
-# Copia dependências e instala
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copia o código da aplicação
 COPY . .
 
-# Define variáveis de ambiente
 ENV FLASK_ENV=production
 ENV HF_HOME=/root/.cache/huggingface  # cache do modelo TrOCR
 
-# Expõe a porta
 EXPOSE 5000
 
-# Comando padrão
 CMD ["python", "main.py"]
