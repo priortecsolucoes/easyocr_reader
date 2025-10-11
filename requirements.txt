@@ -1,6 +1,5 @@
-torch
-torchvision
-torchaudio
-easyocr
+flask
 python-doctr[torch]
-opencv-python-headless
+Pillow
+easyocr
+numpy
