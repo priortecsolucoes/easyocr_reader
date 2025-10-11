@@ -4,8 +4,8 @@ import numpy as np
 from flask import Flask, request, jsonify
 from PIL import Image
 import easyocr
-import torch
 from transformers import DonutProcessor, VisionEncoderDecoderModel
+import torch
 
 EXPECTED_PASSWORD = "Pr!ortecEasyOCR@2025"
 
@@ -15,28 +15,37 @@ print("🔄 Inicializando EasyOCR...")
 reader = easyocr.Reader(['pt'])
 print("✅ EasyOCR carregado com sucesso!")
 
-print("🔄 Inicializando Donut...")
+print("🔄 Inicializando Donut (documento completo)...")
 processor = DonutProcessor.from_pretrained("naver-clova-ix/donut-base")
 model = VisionEncoderDecoderModel.from_pretrained("naver-clova-ix/donut-base")
 device = "cuda" if torch.cuda.is_available() else "cpu"
 model.to(device)
 print("✅ Donut carregado com sucesso!")
 
-def run_donut_bottom(pil_image: Image.Image, bottom_percent: float = 0.35) -> str:
+# -------------------------------
+# Função auxiliar para Donut
+# -------------------------------
+def run_donut_bottom_half(pil_image: Image.Image, percent_bottom: float = 0.5) -> str:
     width, height = pil_image.size
-    start_crop = int(height * (1 - bottom_percent))
-    bottom_crop = pil_image.crop((0, start_crop, width, height))
-    bottom_crop = bottom_crop.convert("RGB").resize((480, 480))
-    
-    pixel_values = processor(bottom_crop, return_tensors="pt").pixel_values.to(device)
-    generated_ids = model.generate(pixel_values, max_length=1024)
-    text = processor.batch_decode(
-        generated_ids,
-        skip_special_tokens=True,
-        task_prompt="<s_doc>"
-    )[0]
+    crop_start = int(height * (1 - percent_bottom))
+    bottom_crop = pil_image.crop((0, crop_start, width, height))
+
+    # converte para RGB e redimensiona se necessário
+    bottom_crop = bottom_crop.convert("RGB")
+
+    # Prepara entrada para Donut
+    pixel_values = processor(images=bottom_crop, return_tensors="pt").pixel_values.to(device)
+
+    # Prompt para extração de texto livre
+    task_prompt = "<s_text>"
+
+    outputs = model.generate(pixel_values, decoder_input_ids=processor.get_decoder_prompt_ids(task=task_prompt, batch_size=1))
+    text = processor.batch_decode(outputs, skip_special_tokens=True)[0]
     return text.strip()
 
+# -------------------------------
+# Endpoint principal
+# -------------------------------
 @app.route('/upload-png', methods=['POST'])
 def upload_png():
     start = time.time()
@@ -44,14 +53,15 @@ def upload_png():
         password = request.form.get('password', None)
         if password != EXPECTED_PASSWORD:
             return jsonify({'error': 'Senha inválida ou não fornecida.'}), 401
-
+            
         if 'file' not in request.files:
             return jsonify({'error': 'Nenhum arquivo enviado.'}), 400
 
         file = request.files['file']
+
         keywords_str = request.form.get('keywords', None)
         percent_str = request.form.get('percent', '0.25')
-        percent_donut_str = request.form.get('percent_donut', '0.50')
+        percent_donut_str = request.form.get('percent_donut', '0.5')
 
         keywords = []
         if keywords_str and keywords_str.strip():
@@ -59,8 +69,10 @@ def upload_png():
 
         try:
             percent = float(percent_str)
+            if not (0 < percent <= 1):
+                raise ValueError
             percent_donut = float(percent_donut_str)
-            if not (0 < percent <= 1) or not (0 < percent_donut <= 1):
+            if not (0 < percent_donut <= 1):
                 raise ValueError
         except Exception:
             return jsonify({'error': 'Percentual inválido. Use um valor entre 0 e 1.'}), 400
@@ -68,17 +80,22 @@ def upload_png():
         img = Image.open(file.stream).convert("RGB")
         width, height = img.size
 
-        # Leitura EasyOCR
+        # -------------------------------
+        # EasyOCR
+        # -------------------------------
         if not keywords:
-            easy_text = reader.readtext(np.array(img), detail=0, paragraph=True)
+            image_np = np.array(img)
+            easy_text = reader.readtext(image_np, detail=0, paragraph=True)
         else:
             top_crop = img.crop((0, 0, width, int(height * percent)))
-            partial_text = reader.readtext(np.array(top_crop), detail=0, paragraph=True)
+            image_top_np = np.array(top_crop)
+            partial_text = reader.readtext(image_top_np, detail=0, paragraph=True)
             partial_text_joined = " ".join(partial_text).upper()
 
             if any(keyword in partial_text_joined for keyword in keywords):
                 bottom_crop = img.crop((0, int(height * percent), width, height))
-                rest_text = reader.readtext(np.array(bottom_crop), detail=0, paragraph=True)
+                image_bottom_np = np.array(bottom_crop)
+                rest_text = reader.readtext(image_bottom_np, detail=0, paragraph=True)
                 easy_text = partial_text + rest_text
             else:
                 total_time = time.time() - start
@@ -91,9 +108,14 @@ def upload_png():
 
         easy_text_joined = " ".join(easy_text)
 
-        # Leitura Donut na parte inferior
-        donut_text = run_donut_bottom(img, bottom_percent=percent_donut)
+        # -------------------------------
+        # Donut na metade inferior
+        # -------------------------------
+        donut_text = run_donut_bottom_half(img, percent_bottom=percent_donut)
 
+        # -------------------------------
+        # Resultado combinado
+        # -------------------------------
         combined_result = easy_text_joined.strip() + "\n---\n" + donut_text.strip()
         total_time = time.time() - start
 
