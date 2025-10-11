@@ -4,6 +4,7 @@ from flask import Flask, request, jsonify
 from PIL import Image
 import numpy as np
 import easyocr
+import torch
 from doctr.documents import DocumentFile
 from doctr.models import ocr as doctr_ocr
 
@@ -12,34 +13,35 @@ EXPECTED_PASSWORD = "Pr!ortecEasyOCR@2025"
 app = Flask(__name__)
 
 # -------------------------------
-# Inicializando modelos OCR
+# Inicialização EasyOCR
 # -------------------------------
 print("🔄 Inicializando EasyOCR...")
 reader = easyocr.Reader(['pt'])
 print("✅ EasyOCR carregado com sucesso!")
 
-print("🔄 Inicializando docTR (manuscritos)...")
-doctr_model = doctr_ocr(pretrained=True)
+# -------------------------------
+# Inicialização docTR
+# -------------------------------
+print("🔄 Inicializando docTR (manuscritos na parte inferior)...")
+device = "cuda" if torch.cuda.is_available() else "cpu"
+doctr_model = doctr_ocr(pretrained=True).to(device)
 print("✅ docTR carregado com sucesso!")
 
-# -------------------------------
-# Função para ler manuscritos na parte inferior
-# -------------------------------
-def run_doctr_bottom_half(pil_image: Image.Image, percent_bottom: float = 0.35) -> str:
+def run_doctr_bottom_half(pil_image: Image.Image, percent_bottom: float = 0.35):
     width, height = pil_image.size
     crop_start = int(height * (1 - percent_bottom))
     bottom_crop = pil_image.crop((0, crop_start, width, height))
-
-    doc_file = DocumentFile.from_images(bottom_crop)
+    
+    # Converte em DocumentFile (lista de imagens)
+    doc_file = DocumentFile.from_images([bottom_crop])
+    
+    # Processa com docTR
     result = doctr_model(doc_file)
+    
+    # Extrai texto
+    texts = [block.value for page in result.pages for block in page.blocks]
+    return " ".join(texts).strip()
 
-    # Extrai todo o texto concatenado
-    full_text = result.export()[0]["text"]
-    return full_text.strip()
-
-# -------------------------------
-# Endpoint principal
-# -------------------------------
 @app.route('/upload-png', methods=['POST'])
 def upload_png():
     start = time.time()
@@ -55,33 +57,24 @@ def upload_png():
 
         keywords_str = request.form.get('keywords', None)
         percent_str = request.form.get('percent', '0.25')
-        percent_doctr_str = request.form.get('percent_doctr', '0.35')  # parte inferior para docTR
+        percent_bottom_str = request.form.get('percent_bottom', '0.35')
 
-        # -------------------------------
-        # Parâmetros
-        # -------------------------------
         keywords = []
         if keywords_str and keywords_str.strip():
             keywords = [k.strip().upper() for k in keywords_str.split(',') if k.strip()]
-
         try:
             percent = float(percent_str)
-            if not (0 < percent <= 1):
-                raise ValueError
-            percent_doctr = float(percent_doctr_str)
-            if not (0 < percent_doctr <= 1):
+            percent_bottom = float(percent_bottom_str)
+            if not (0 < percent <= 1) or not (0 < percent_bottom <= 1):
                 raise ValueError
         except Exception:
             return jsonify({'error': 'Percentual inválido. Use um valor entre 0 e 1.'}), 400
 
-        # -------------------------------
-        # Carrega imagem
-        # -------------------------------
         img = Image.open(file.stream).convert("RGB")
         width, height = img.size
 
         # -------------------------------
-        # 🔹 Leitura com EasyOCR
+        # EasyOCR
         # -------------------------------
         if not keywords:
             image_np = np.array(img)
@@ -101,24 +94,24 @@ def upload_png():
                 total_time = time.time() - start
                 return jsonify({
                     'status': 'not_identified',
-                    'message': 'Documento não identificado pelas palavras-chave fornecidas no início.',
-                    'easyocr_text': partial_text,
-                    'doctr_text': '',
+                    'message': 'Documento não identificado pelas palavras-chave fornecidas.',
+                    'ocr_result_easy': partial_text,
+                    'ocr_result_doctr': "",
                     'time': round(total_time, 2)
                 })
 
         easy_text_joined = " ".join(easy_text)
 
         # -------------------------------
-        # 🔹 Leitura com docTR (apenas parte inferior)
+        # docTR na parte inferior
         # -------------------------------
-        doctr_text = run_doctr_bottom_half(img, percent_bottom=percent_doctr)
+        doctr_text = run_doctr_bottom_half(img, percent_bottom=percent_bottom)
 
         total_time = time.time() - start
         return jsonify({
             'status': 'success',
-            'easyocr_text': easy_text_joined,
-            'doctr_text': doctr_text,
+            'ocr_result_easy': easy_text_joined,
+            'ocr_result_doctr': doctr_text,
             'time': round(total_time, 2)
         })
 
