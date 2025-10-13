@@ -5,19 +5,14 @@ import numpy as np
 import easyocr
 import time
 
-from doctr.models import ocr_predictor
-
 EXPECTED_PASSWORD = "Pr!ortecEasyOCR@2025"
 
 app = Flask(__name__)
 
 print("🔄 Inicializando EasyOCR...")
-easyocr_reader = easyocr.Reader(['pt'])
-print("✅ EasyOCR carregado com sucesso!")
+reader = easyocr.Reader(['pt'])
 
-print("🔄 Inicializando docTR OCR...")
-doctr_model = ocr_predictor(pretrained=True)
-print("✅ docTR carregado com sucesso!")
+print("✅ EasyOCR carregado com sucesso!")
 
 @app.route('/upload-png', methods=['POST'])
 def upload_png():
@@ -49,54 +44,34 @@ def upload_png():
         img = Image.open(file.stream).convert("RGB")
         width, height = img.size
 
-        # Se não passar keywords ou for vazia, processa imagem inteira
+        # Se não passar keywords ou for vazia, processa imagem inteira direto
         if not keywords:
             image_np = np.array(img)
-
-            # EasyOCR
-            easyocr_text = easyocr_reader.readtext(image_np, detail=0, paragraph=True)
-
-            # docTR
-            from doctr.io import DocumentFile
-            doc_file = DocumentFile.from_images([img])
-            doctr_result = doctr_model(doc_file)
-            doctr_text = " ".join([line.value for page in doctr_result.pages for line in page.lines])
-
+            text = reader.readtext(image_np, detail=0, paragraph=True)
             total_time = time.time() - start
             print(f"✅ OCR completo executado sem filtro em {total_time:.2f}s")
             return jsonify({
                 'status': 'success',
-                'easyocr_result': easyocr_text,
-                'doctr_result': doctr_text,
+                'ocr_result': text,
                 'time': round(total_time, 2)
             })
 
-        # Caso haja keywords, processa parcialmente
+        # Caso contrário faz leitura parcial para verificar palavras-chave
         top_crop = img.crop((0, 0, width, int(height * percent)))
         image_top_np = np.array(top_crop)
-        partial_text = easyocr_reader.readtext(image_top_np, detail=0, paragraph=True)
+        partial_text = reader.readtext(image_top_np, detail=0, paragraph=True)
         partial_text_joined = " ".join(partial_text).upper()
 
         if any(keyword in partial_text_joined for keyword in keywords):
             bottom_crop = img.crop((0, int(height * percent), width, height))
-
-            # EasyOCR
             image_bottom_np = np.array(bottom_crop)
-            rest_text_easyocr = easyocr_reader.readtext(image_bottom_np, detail=0, paragraph=True)
-            full_text_easyocr = partial_text + rest_text_easyocr
-
-            # docTR
-            from doctr.io import DocumentFile
-            doc_file = DocumentFile.from_images([bottom_crop])
-            doctr_result = doctr_model(doc_file)
-            doctr_text = " ".join([line.value for page in doctr_result.pages for line in page.lines])
-
+            rest_text = reader.readtext(image_bottom_np, detail=0, paragraph=True)
+            full_text = partial_text + rest_text
             ocr_time = time.time() - start
             print(f"✅ OCR completo fracionado concluído em {ocr_time:.2f}s")
             return jsonify({
                 'status': 'success',
-                'easyocr_result': full_text_easyocr,
-                'doctr_result': doctr_text,
+                'ocr_result': full_text,
                 'time': round(ocr_time, 2)
             })
         else:
@@ -105,7 +80,7 @@ def upload_png():
             return jsonify({
                 'status': 'not_identified',
                 'message': 'Documento não identificado pelas palavras-chave fornecidas no início.',
-                'easyocr_result': partial_text,
+                'ocr_result': partial_text,
                 'time': round(total_time, 2)
             })
 
