@@ -1,5 +1,4 @@
 flask
-python-doctr[torch]
-Pillow
 easyocr
 numpy
+pillow
